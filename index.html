@@ -393,11 +393,17 @@ function makeFX(canvas,type){
           const px=p.x-L+(L/seg)*s;
           s?ctx.lineTo(px,wave(p,px)):ctx.moveTo(px,wave(p,px));
         }
-        if(p.curl){                                        // ricciolo a spirale in punta
-          const hy=wave(p,p.x), cx=p.x, cy=hy-p.cd*p.cr;
-          for(let k=1;k<=14;k++){
-            const a=k*.36, r=p.cr*(1-.05*k);
-            ctx.lineTo(cx+r*Math.sin(a),cy+p.cd*r*Math.cos(a));
+        if(p.curl){                                        // ricciolo che si avvolge e si scioglie
+          const prog=Math.max(0,Math.min(1,p.x/W));        // progresso della corsa (0→1)
+          const breath=.85+.15*Math.sin(now*2+p.ph);       // leggero respiro della spirale
+          const A=6.2*Math.sin(Math.PI*prog)*breath;       // avvolgimento: cresce, culmina, si scioglie
+          if(A>.3){
+            const hy=wave(p,p.x), cx=p.x, cy=hy-p.cd*p.cr;
+            const K=Math.max(2,Math.ceil(A/.36));
+            for(let k=1;k<=K;k++){
+              const a=(A*k)/K, r=p.cr*(1-.6*k/K);
+              ctx.lineTo(cx+r*Math.sin(a),cy+p.cd*r*Math.cos(a));
+            }
           }
         }
         ctx.stroke();
