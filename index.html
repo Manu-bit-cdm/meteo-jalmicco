@@ -39,7 +39,8 @@ header h1 span{color:var(--dim);font-weight:300}
 main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:column;gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;position:relative;overflow:hidden}
 .fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;border-radius:inherit}
-.card>*:not(.fx){position:relative;z-index:1}
+.card>*:not(.fx){position:relative;z-index:1;transform:translateZ(0)}
+.hero{isolation:isolate}
 /* scrollone della banderuola per raffica improvvisa */
 #kick{transform-origin:65px 65px}
 .kick{animation:kick .8s ease-out}
@@ -48,15 +49,17 @@ main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:c
 .rec{animation:rec 3.5s ease-out}
 @keyframes rec{0%,55%{box-shadow:0 0 0 1px #f2c14e;background:#f2c14e22}100%{box-shadow:none}}
 /* velo di cielo che segue l'ora del giorno */
-.hero::after{content:"";position:absolute;inset:-30%;pointer-events:none;
+.hero::after{content:"";position:absolute;inset:-30%;pointer-events:none;z-index:-1;
   background:radial-gradient(circle at 85% 15%,var(--sky,transparent) 0%,transparent 55%);
   opacity:.12;transition:opacity 2s}
+/* fix per vecchi Safari: forza l'ordine corretto dei livelli nell'hero */
+.hero>*:not(.fx){transform:translateZ(0)}
 .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:8px}
 .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 
 /* ---------- hero temperatura ---------- */
 .hero{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;position:relative;overflow:hidden}
-.hero::before{content:"";position:absolute;inset:-40%;background:radial-gradient(circle at 18% 50%,var(--acc) 0%,transparent 42%);
+.hero::before{content:"";position:absolute;inset:-40%;z-index:-1;background:radial-gradient(circle at 18% 50%,var(--acc) 0%,transparent 42%);
   opacity:.13;pointer-events:none;transition:background 1s}
 .bigT{font-family:'Chivo Mono',monospace;font-weight:600;font-size:clamp(3.4rem,11vw,5.6rem);
   line-height:1;color:var(--acc);transition:color 1s;letter-spacing:-.03em}
@@ -901,6 +904,13 @@ $('saveBtn').onclick=async()=>{
 
 /* ================= AVVIO ================= */
 let timers=[];
+// sveglia anti-bug di rendering (Safari): forza il ridisegno dell'hero
+function nudgeHero(){
+  const h=document.querySelector('.hero');
+  if(!h)return;
+  h.style.display='none';void h.offsetHeight;h.style.display='';
+}
+window.addEventListener('resize',()=>{clearTimeout(nudgeHero._t);nudgeHero._t=setTimeout(nudgeHero,200)});
 function start(){
   timers.forEach(clearInterval);timers=[];
   $('main').style.display='flex';
@@ -911,6 +921,7 @@ function start(){
   timers.push(setInterval(()=>{if(!document.hidden)refreshEco()},60000));
   timers.push(setInterval(()=>{if(!document.hidden&&isLive())refreshDay()},5*60000));
   timers.push(setInterval(()=>{if(!document.hidden&&isLive())refreshEcoDay()},5*60000));
+  setTimeout(nudgeHero,400);
 }
 // refresh immediato quando la pagina torna in primo piano
 document.addEventListener('visibilitychange',()=>{
