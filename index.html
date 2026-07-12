@@ -212,6 +212,7 @@ footer{text-align:center;color:var(--dim);font-size:.68rem;margin-top:22px}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px" id="rangeBar">
       <span class="lbl" style="margin:0 6px 0 0">Intervallo</span>
       <button class="preset rng sel" data-r="day">Giorno</button>
+      <button class="preset rng" data-r="yday">Ieri</button>
       <button class="preset rng" data-r="h24">24 h</button>
       <button class="preset rng" data-r="h12">12 h</button>
       <button class="preset rng" data-r="h6">6 h</button>
@@ -577,7 +578,7 @@ async function refreshEcoDay(){
     ecoDay.t.clear();ecoDay.h.clear();
     const base=isLive()?todayStr():selDate;
     await ecoFetchDay(base);
-    if(isRolling())await ecoFetchDay(dayBefore(base));
+    if(isRolling()||rangeMode==='yday')await ecoFetchDay(dayBefore(base));
     renderChart();renderExtremes();
   }catch(e){console.warn('ecowitt history:',e)}
 }
@@ -601,6 +602,7 @@ async function ensurePrev(){
 }
 function viewObs(){
   if(rangeMode==='day')return dayObs;
+  if(rangeMode==='yday')return prevObs;
   if(rangeMode==='custom'){
     const a=$('fromT').value||'00:00', b=$('toT').value||'23:59';
     return dayObs.filter(o=>{const t=(o.obsTimeLocal||'').slice(11,16);return t>=a&&t<=b});
@@ -615,12 +617,40 @@ async function setRange(r){
   rangeMode=r;
   $('customRange').style.display=r==='custom'?'inline-flex':'none';
   document.querySelectorAll('.rng').forEach(b=>b.classList.toggle('sel',b.dataset.r===r));
-  if(isRolling()){await ensurePrev();refreshEcoDay()}
+  if(isRolling()||r==='yday'){await ensurePrev();refreshEcoDay()}
   renderChart();
+}
+
+/* ---- riferimenti climatici (archivio OSMER) e media giornaliera ---- */
+// ⬇️ COMPILA QUI le medie climatiche DECADALI estratte dall'archivio clima OSMER.
+// Chiave 'MM-D' = mese-decade (decade 1 = giorni 1–10, 2 = 11–20, 3 = 21–fine mese).
+// max = media delle massime · med = media · min = media delle minime del periodo.
+// Esempio per la 2ª decade di luglio:   '07-2':{max:30.5, med:24.6, min:18.7},
+const CLIMA={
+  // '07-1':{max:0.0, med:0.0, min:0.0},
+  // '07-2':{max:0.0, med:0.0, min:0.0},
+  // '07-3':{max:0.0, med:0.0, min:0.0},
+  // '08-1':{max:0.0, med:0.0, min:0.0},
+  // …aggiungi le decadi che ti servono, tutte e 36 se vuoi la copertura annuale
+};
+const displayedDay=()=>{const b=isLive()?todayStr():selDate;return rangeMode==='yday'?dayBefore(b):b};
+const dayFullObs=()=>rangeMode==='yday'?prevObs:dayObs;
+function climaFor(){
+  const d=displayedDay();if(!d)return null;
+  const g=+d.slice(8,10), dec=g<=10?1:(g<=20?2:3);
+  return CLIMA[d.slice(5,7)+'-'+dec]||null;
+}
+function dayMeanT(){
+  const a=dayFullObs().map(o=>o.metric?.tempAvg).filter(v=>v!=null);
+  return a.length?a.reduce((s,v)=>s+v,0)/a.length:null;
 }
 
 const SERIES=[
  {id:'temp',  lbl:'Temperatura', unit:'°C',  axis:'yC',   color:'#fb7a2e', get:o=>o.metric?.tempAvg},
+ {id:'tmed',  lbl:'T media giorno',unit:'°C',axis:'yC',   color:'#ffd0a8', dash:[10,6], ref:()=>dayMeanT()},
+ {id:'cmax',  lbl:'Clima T max', unit:'°C',  axis:'yC',   color:'#f87171', dash:[3,5], clim:1, ref:()=>climaFor()?.max},
+ {id:'cmed',  lbl:'Clima T media',unit:'°C', axis:'yC',   color:'#facc15', dash:[3,5], clim:1, ref:()=>climaFor()?.med},
+ {id:'cmin',  lbl:'Clima T min', unit:'°C',  axis:'yC',   color:'#60a5fa', dash:[3,5], clim:1, ref:()=>climaFor()?.min},
  {id:'dew',   lbl:'Dew point',   unit:'°C',  axis:'yC',   color:'#2dd4bf', get:o=>o.metric?.dewptAvg},
  {id:'hum',   lbl:'Umidità',     unit:'%',   axis:'yPct', color:'#4ade80', get:o=>o.humidityAvg},
  {id:'press', lbl:'Pressione',   unit:'hPa', axis:'yHpa', color:'#c9a2ff', get:o=>{const m=o.metric||{};return m.pressureMax!=null&&m.pressureMin!=null?(m.pressureMax+m.pressureMin)/2:null}},
@@ -652,14 +682,15 @@ let chart=null;
 
 function buildControls(){
   const ch=$('chips');ch.innerHTML='';
-  SERIES.filter(s=>!s.eco||ecoIsOn()).forEach(s=>{
+  SERIES.filter(s=>(!s.eco||ecoIsOn())&&(!s.clim||climaFor())).forEach(s=>{
     const b=document.createElement('button');
     b.className='chip';b.textContent=s.lbl;b.dataset.id=s.id;
     b.onclick=()=>{active.has(s.id)?active.delete(s.id):active.add(s.id);syncChips();renderChart()};
     ch.appendChild(b);
   });
   const pr=$('presets');pr.innerHTML='';
-  const plist=PRESETS.concat(ecoIsOn()?[{n:'Confronto T',s:['temp','etemp']},{n:'Confronto UR',s:['hum','ehum']}]:[]);
+  let plist=PRESETS.concat(ecoIsOn()?[{n:'Confronto T',s:['temp','etemp']},{n:'Confronto UR',s:['hum','ehum']}]:[]);
+  if(climaFor())plist=plist.concat([{n:'Clima decade',s:['temp','tmed','cmax','cmed','cmin']}]);
   plist.forEach(p=>{
     const b=document.createElement('button');
     b.className='preset';b.textContent=p.n;
@@ -682,20 +713,24 @@ function renderChart(){
   const src=viewObs();
   if(!src.length){if(chart){chart.data.labels=[];chart.data.datasets=[];chart.update()}return}
   const labels=src.map(o=>(o.obsTimeLocal||'').slice(11,16));
-  const datasets=SERIES.filter(s=>active.has(s.id)).map(s=>({
+  const datasets=SERIES.filter(s=>active.has(s.id)).map(s=>{
+    let data;
+    if(s.ref){const v=s.ref();data=src.map(()=>v==null?null:+v)}
+    else data=src.map(s.get).map(v=>v==null?null:+v);
+    return{
     label:s.lbl+(s.unit?' ('+s.unit+')':''),
-    data:src.map(s.get).map(v=>v==null?null:+v),
+    data,
     borderColor:s.color,
     backgroundColor:s.fill?s.color+'33':s.color,
     yAxisID:s.axis,
-    borderWidth:s.points?0:1.8,
+    borderWidth:s.ref?1.3:(s.points?0:1.8),
     pointRadius:s.points?2.4:0,
     showLine:!s.points,
     fill:!!s.fill,
     borderDash:s.dash||[],
-    tension:.3,
+    tension:s.ref?0:.3,
     spanGaps:true,
-  }));
+  }});
   const used=new Set(datasets.map(d=>d.yAxisID));
   const scales={x:{grid:{color:'#22304a55'},ticks:{color:'#8ea2bd',maxTicksLimit:12,font:{family:'Chivo Mono',size:10}}}};
   Object.entries(AXES).forEach(([id,a])=>{
