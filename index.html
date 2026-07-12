@@ -40,6 +40,17 @@ main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:c
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;position:relative;overflow:hidden}
 .fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;border-radius:inherit}
 .card>*:not(.fx){position:relative;z-index:1}
+/* scrollone della banderuola per raffica improvvisa */
+#kick{transform-origin:65px 65px}
+.kick{animation:kick .8s ease-out}
+@keyframes kick{0%{transform:rotate(0)}25%{transform:rotate(8deg)}55%{transform:rotate(-5deg)}80%{transform:rotate(2deg)}100%{transform:rotate(0)}}
+/* pulsazione quando un estremo del giorno viene battuto */
+.rec{animation:rec 3.5s ease-out}
+@keyframes rec{0%,55%{box-shadow:0 0 0 1px #f2c14e;background:#f2c14e22}100%{box-shadow:none}}
+/* velo di cielo che segue l'ora del giorno */
+.hero::after{content:"";position:absolute;inset:-30%;pointer-events:none;
+  background:radial-gradient(circle at 85% 15%,var(--sky,transparent) 0%,transparent 55%);
+  opacity:.12;transition:opacity 2s}
 .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:8px}
 .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 
@@ -124,6 +135,8 @@ footer{text-align:center;color:var(--dim);font-size:.68rem;margin-top:22px}
 
   <!-- HERO -->
   <section class="card hero">
+    <canvas class="fx" id="fxFog"></canvas>
+    <canvas class="fx" id="fxHeat"></canvas>
     <div>
       <div class="lbl">Temperatura</div>
       <div class="bigT" id="tNow">--<small>°C</small></div>
@@ -150,10 +163,10 @@ footer{text-align:center;color:var(--dim);font-size:.68rem;margin-top:22px}
           <text x="121" y="69" text-anchor="middle">E</text>
           <text x="65" y="127" text-anchor="middle">S</text>
           <text x="9" y="69" text-anchor="middle">O</text>
-          <g class="arrow" id="arrow">
+          <g id="kick"><g class="arrow" id="arrow">
             <polygon points="65,18 71,40 59,40"/>
             <rect x="63.4" y="38" width="3.2" height="20" rx="1.6"/>
-          </g>
+          </g></g>
           <circle class="hub" cx="65" cy="65" r="16"/>
           <text x="65" y="69" text-anchor="middle" id="dirTxt" style="fill:var(--txt);font-size:12px" class="mono">--</text>
         </svg>
@@ -436,6 +449,68 @@ if(fxRain.step)FXLIST.push(fxRain);
   requestAnimationFrame(fxLoop);
 })();
 
+/* ---- nebbia (veli orizzontali) e caldo (colonne tremolanti) ---- */
+function makeSoft(canvas,type){
+  if(reduceMotion||!canvas)return{setIntensity(){},step:null};
+  const ctx=canvas.getContext('2d');
+  const DPR=Math.min(2,window.devicePixelRatio||1);
+  let W=1,H=1,parts=[],target=0,level=0;
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();
+    if(r.width<2)return;
+    W=canvas.width=Math.round(r.width*DPR);H=canvas.height=Math.round(r.height*DPR)}
+  new ResizeObserver(resize).observe(canvas.parentElement);
+  const spawn=()=>type==='fog'
+    ?parts.push({x:Math.random()*W,y:H*(.15+Math.random()*.7),rx:(70+Math.random()*120)*DPR,
+      ry:(12+Math.random()*20)*DPR,v:(.15+Math.random()*.25)*DPR,al:.05+Math.random()*.05})
+    :parts.push({x:Math.random()*W,y:H+Math.random()*H*.5,len:(30+Math.random()*50)*DPR,
+      v:(.4+Math.random()*.5)*DPR,ph:Math.random()*6.283,amp:(2+Math.random()*3)*DPR});
+  function step(){
+    level+=(target-level)*.02;
+    ctx.clearRect(0,0,W,H);
+    const want=Math.round(level*(type==='fog'?7:12));
+    while(parts.length<want)spawn();
+    for(let i=parts.length-1;i>=0;i--){
+      const p=parts[i];
+      if(type==='fog'){
+        p.x+=p.v;
+        const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.rx);
+        g.addColorStop(0,'rgba(200,215,235,'+(p.al*level).toFixed(3)+')');
+        g.addColorStop(1,'rgba(200,215,235,0)');
+        ctx.fillStyle=g;
+        ctx.save();ctx.translate(p.x,p.y);ctx.scale(1,p.ry/p.rx);
+        ctx.beginPath();ctx.arc(0,0,p.rx,0,6.283);ctx.fill();ctx.restore();
+        if(p.x-p.rx>W){parts.length>want?parts.splice(i,1):(p.x=-p.rx,p.y=H*(.15+Math.random()*.7))}
+      }else{
+        p.y-=p.v;p.ph+=.04;
+        ctx.strokeStyle='rgba(251,122,46,'+(.05+.05*level).toFixed(3)+')';
+        ctx.lineWidth=1.2*DPR;ctx.beginPath();
+        for(let s=0;s<=8;s++){
+          const yy=p.y+p.len*s/8, xx=p.x+Math.sin(p.ph+s*.8)*p.amp;
+          s?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);
+        }
+        ctx.stroke();
+        if(p.y+p.len<0){parts.length>want?parts.splice(i,1):(p.y=H+10*DPR,p.x=Math.random()*W)}
+      }
+    }
+  }
+  return{setIntensity(v){target=Math.max(0,Math.min(1,v||0))},step};
+}
+const fxFog=makeSoft(document.getElementById('fxFog'),'fog');
+const fxHeat=makeSoft(document.getElementById('fxHeat'),'heat');
+if(fxFog.step)FXLIST.push(fxFog);
+if(fxHeat.step)FXLIST.push(fxHeat);
+
+/* ---- velo di cielo in base all'ora ---- */
+function skyTint(){
+  const h=new Date().getHours()+new Date().getMinutes()/60;
+  let c='transparent';
+  if(h>=22||h<4.5)c='#3d5fa8';        // notte: blu profondo
+  else if(h<7.5)c='#e08a3c';          // alba: ambra
+  else if(h>=19.5)c='#d06a34';        // tramonto: rame
+  document.documentElement.style.setProperty('--sky',c);
+}
+skyTint();setInterval(skyTint,60000);
+
 /* ================= RENDER LIVE ================= */
 function renderCurrent(o){
   const m=o.metric||{};
@@ -465,12 +540,33 @@ function renderCurrent(o){
   // animazioni di sfondo pilotate dai valori reali
   fxWind.setIntensity(Math.max(m.windSpeed||0,(m.windGust||0)*.7));
   fxRain.setIntensity(m.precipRate||0);
+  // nebbia: umidità altissima e dew point incollato alla temperatura
+  const spread=(t!=null&&m.dewpt!=null)?t-m.dewpt:99;
+  fxFog.setIntensity((o.humidity>=95&&spread<=1.5)?Math.min(1,(o.humidity-95)/4):0);
+  // tremolio da caldo oltre i ~31 °C
+  fxHeat.setIntensity(t!=null?Math.max(0,Math.min(1,(t-31)/5)):0);
+  // scrollone della banderuola se la raffica stacca la media di 8+ km/h
+  if(m.windGust!=null&&(m.windGust-(m.windSpeed||0))>=8){
+    const k=document.getElementById('kick');
+    if(k){k.classList.remove('kick');void k.getBoundingClientRect();k.classList.add('kick')}
+  }
+  // pulsazione se un estremo del giorno viene battuto ora
+  if(isLive()){
+    if(recT!=null&&t!=null&&t>recT){recT=t;pulseExt('eTmax')}
+    if(recG!=null&&m.windGust!=null&&m.windGust>recG){recG=m.windGust;pulseExt('eGust')}
+  }
   // memorizza Davis per confronto con Ecowitt
   lastDavis={t:t,h:o.humidity};
   renderCmp();
 }
 
 /* ================= ESTREMI ================= */
+let recT=null,recG=null;   // estremi correnti del giorno (per la pulsazione record)
+function pulseExt(id){
+  const el=$(id)&&$(id).closest('.ext');
+  if(!el)return;
+  el.classList.remove('rec');void el.offsetWidth;el.classList.add('rec');
+}
 function peakWU(field,isMax){
   let v=null,at=null;
   dayObs.forEach(o=>{
@@ -501,6 +597,7 @@ function renderExtremes(){
   setExt('eTmax','eTmaxAt',peakWU('tempHigh',true),'°C');
   setExt('eTmin','eTminAt',peakWU('tempLow',false),'°C');
   setExt('eGust','eGustAt',peakWU('windgustHigh',true),'km/h');
+  if(isLive()){recT=peakWU('tempHigh',true).v;recG=peakWU('windgustHigh',true).v}
   // Ecowitt (solo se configurato)
   const on=ecoIsOn();
   document.querySelectorAll('.eco-ext').forEach(el=>el.style.display=on?'':'none');
