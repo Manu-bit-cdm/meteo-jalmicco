@@ -39,7 +39,7 @@ header h1 span{color:var(--dim);font-weight:300}
 main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:column;gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;position:relative;overflow:hidden}
 .fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;border-radius:inherit}
-.card>*:not(.fx){position:relative;z-index:1;transform:translateZ(0)}
+.card>*:not(.fx){position:relative;z-index:1}
 .hero{isolation:isolate}
 /* scrollone della banderuola per raffica improvvisa */
 #kick{transform-origin:65px 65px}
@@ -48,19 +48,17 @@ main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:c
 /* pulsazione quando un estremo del giorno viene battuto */
 .rec{animation:rec 3.5s ease-out}
 @keyframes rec{0%,55%{box-shadow:0 0 0 1px #f2c14e;background:#f2c14e22}100%{box-shadow:none}}
-/* velo di cielo che segue l'ora del giorno */
-.hero::after{content:"";position:absolute;inset:-30%;pointer-events:none;z-index:-1;
-  background:radial-gradient(circle at 85% 15%,var(--sky,transparent) 0%,transparent 55%);
-  opacity:.12;transition:opacity 2s}
-/* fix per vecchi Safari: forza l'ordine corretto dei livelli nell'hero */
-.hero>*:not(.fx){transform:translateZ(0)}
 .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:8px}
 .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 
 /* ---------- hero temperatura ---------- */
-.hero{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;position:relative;overflow:hidden}
-.hero::before{content:"";position:absolute;inset:-40%;z-index:-1;background:radial-gradient(circle at 18% 50%,var(--acc) 0%,transparent 42%);
-  opacity:.13;pointer-events:none;transition:background 1s}
+.hero{position:relative;overflow:hidden}
+.heroGlow,.heroSky{position:absolute;pointer-events:none}
+.heroGlow{inset:-40%;background:radial-gradient(circle at 18% 50%,var(--acc) 0%,transparent 42%);
+  opacity:.13;transition:background 1s}
+.heroSky{inset:-30%;background:radial-gradient(circle at 85% 15%,var(--sky,#0000) 0%,transparent 55%);
+  opacity:.12;transition:opacity 2s}
+.heroContent{position:relative;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
 .bigT{font-family:'Chivo Mono',monospace;font-weight:600;font-size:clamp(3.4rem,11vw,5.6rem);
   line-height:1;color:var(--acc);transition:color 1s;letter-spacing:-.03em}
 .bigT small{font-size:.35em;font-weight:300;color:var(--mut)}
@@ -104,7 +102,7 @@ main{max-width:1150px;margin:0 auto;padding:0 14px;display:flex;flex-direction:c
   letter-spacing:.1em;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:'Sora',sans-serif}
 .preset:hover,.preset.sel{color:var(--txt);background:var(--panel2)}
 .chartBox{position:relative;height:380px}
-@media(max-width:640px){.chartBox{height:300px}.hero{grid-template-columns:1fr}}
+@media(max-width:640px){.chartBox{height:300px}.heroContent{grid-template-columns:1fr}}
 
 /* ---------- setup / settings ---------- */
 .overlay{position:fixed;inset:0;background:#0c1320ee;display:flex;align-items:center;justify-content:center;
@@ -140,16 +138,20 @@ footer{text-align:center;color:var(--dim);font-size:.68rem;margin-top:22px}
   <section class="card hero">
     <canvas class="fx" id="fxFog"></canvas>
     <canvas class="fx" id="fxHeat"></canvas>
-    <div>
-      <div class="lbl">Temperatura</div>
-      <div class="bigT" id="tNow">--<small>°C</small></div>
-    </div>
-    <div class="heroSide">
-      <div class="mini"><div class="lbl">Heat index</div><div class="v" id="hIdx">--</div><div class="u">°C</div></div>
-      <div class="mini"><div class="lbl">Wind chill</div><div class="v" id="wChl">--</div><div class="u">°C</div></div>
-      <div class="mini"><div class="lbl">Dew point</div><div class="v" id="dew">--</div><div class="u">°C</div></div>
-      <div class="mini"><div class="lbl">Umidità</div><div class="v" id="hum">--</div><div class="u">%</div></div>
-      <div class="mini"><div class="lbl">Pressione</div><div class="v" id="press">--</div><div class="u">hPa</div></div>
+    <div class="heroGlow"></div>
+    <div class="heroSky"></div>
+    <div class="heroContent">
+      <div>
+        <div class="lbl">Temperatura</div>
+        <div class="bigT" id="tNow">--<small>°C</small></div>
+      </div>
+      <div class="heroSide">
+        <div class="mini"><div class="lbl">Heat index</div><div class="v" id="hIdx">--</div><div class="u">°C</div></div>
+        <div class="mini"><div class="lbl">Wind chill</div><div class="v" id="wChl">--</div><div class="u">°C</div></div>
+        <div class="mini"><div class="lbl">Dew point</div><div class="v" id="dew">--</div><div class="u">°C</div></div>
+        <div class="mini"><div class="lbl">Umidità</div><div class="v" id="hum">--</div><div class="u">%</div></div>
+        <div class="mini"><div class="lbl">Pressione</div><div class="v" id="press">--</div><div class="u">hPa</div></div>
+      </div>
     </div>
   </section>
 
@@ -916,6 +918,7 @@ function start(){
   $('main').style.display='flex';
   buildControls();
   refreshCurrent();refreshDay();refreshEco();refreshEcoDay();
+  setTimeout(nudgeHero,400);setTimeout(nudgeHero,1500);
   // polling attivo solo a pagina visibile (risparmia quota API in background)
   timers.push(setInterval(()=>{if(!document.hidden)refreshCurrent()},20000));
   timers.push(setInterval(()=>{if(!document.hidden)refreshEco()},60000));
