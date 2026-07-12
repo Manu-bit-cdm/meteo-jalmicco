@@ -627,10 +627,10 @@ async function setRange(r){
 // max = media delle massime · med = media · min = media delle minime del periodo.
 // Esempio per la 2ª decade di luglio:   '07-2':{max:30.5, med:24.6, min:18.7},
 const CLIMA={
-  // '07-1':{max:29.1, med:23.0, min:16.8},
-  // '07-2':{max:29.4, med:23.4, min:17.2},
-  // '07-3':{max:30.3, med:23.9, min:17.6},
-  // '08-1':{max:30.5, med:24.1, min:17.7},
+  // '07-1':{max:0.0, med:0.0, min:0.0},
+  // '07-2':{max:0.0, med:0.0, min:0.0},
+  // '07-3':{max:0.0, med:0.0, min:0.0},
+  // '08-1':{max:0.0, med:0.0, min:0.0},
   // …aggiungi le decadi che ti servono, tutte e 36 se vuoi la copertura annuale
 };
 const displayedDay=()=>{const b=isLive()?todayStr():selDate;return rangeMode==='yday'?dayBefore(b):b};
