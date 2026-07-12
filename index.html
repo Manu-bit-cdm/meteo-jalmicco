@@ -129,7 +129,8 @@ footer{text-align:center;color:var(--dim);font-size:.68rem;margin-top:22px}
       <div class="bigT" id="tNow">--<small>°C</small></div>
     </div>
     <div class="heroSide">
-      <div class="mini"><div class="lbl">Percepita</div><div class="v" id="tApp">--</div><div class="u">°C</div></div>
+      <div class="mini"><div class="lbl">Heat index</div><div class="v" id="hIdx">--</div><div class="u">°C</div></div>
+      <div class="mini"><div class="lbl">Wind chill</div><div class="v" id="wChl">--</div><div class="u">°C</div></div>
       <div class="mini"><div class="lbl">Dew point</div><div class="v" id="dew">--</div><div class="u">°C</div></div>
       <div class="mini"><div class="lbl">Umidità</div><div class="v" id="hum">--</div><div class="u">%</div></div>
       <div class="mini"><div class="lbl">Pressione</div><div class="v" id="press">--</div><div class="u">hPa</div></div>
@@ -442,8 +443,11 @@ function renderCurrent(o){
   const c=tempColor(t);
   document.documentElement.style.setProperty('--acc',c);
   $('tNow').innerHTML=(t==null?'--':f1(t))+'<small>°C</small>';
-  const app=(t!=null&&t>=21&&m.heatIndex!=null)?m.heatIndex:(t!=null&&t<=10&&m.windChill!=null?m.windChill:t);
-  $('tApp').textContent=f1(app);
+  // heat index e wind chill espliciti
+  $('hIdx').textContent=f1(m.heatIndex);
+  $('hIdx').style.color=(m.heatIndex!=null&&m.heatIndex>=32)?'#ef4444':(m.heatIndex!=null&&m.heatIndex>=27?'#fb7a2e':'');
+  $('wChl').textContent=f1(m.windChill);
+  $('wChl').style.color=(m.windChill!=null&&m.windChill<=-10)?'#7c5cff':(m.windChill!=null&&m.windChill<=0?'#38bdf8':'');
   $('dew').textContent=f1(m.dewpt);
   $('hum').textContent=f0(o.humidity);
   $('press').textContent=f1(m.pressure);
@@ -627,10 +631,10 @@ async function setRange(r){
 // max = media delle massime · med = media · min = media delle minime del periodo.
 // Esempio per la 2ª decade di luglio:   '07-2':{max:30.5, med:24.6, min:18.7},
 const CLIMA={
-   '07-1':{max:29.1, med:23.0, min:16.8},
-   '07-2':{max:29.4, med:23.4, min:17.2},
-   '07-3':{max:30.3, med:23.9, min:17.6},
-   '08-1':{max:30.5, med:24.1, min:17.7},
+  // '07-1':{max:0.0, med:0.0, min:0.0},
+  // '07-2':{max:0.0, med:0.0, min:0.0},
+  // '07-3':{max:0.0, med:0.0, min:0.0},
+  // '08-1':{max:0.0, med:0.0, min:0.0},
   // …aggiungi le decadi che ti servono, tutte e 36 se vuoi la copertura annuale
 };
 const displayedDay=()=>{const b=isLive()?todayStr():selDate;return rangeMode==='yday'?dayBefore(b):b};
