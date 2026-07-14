@@ -318,6 +318,9 @@ function tempColor(t){
 const DIRS=['N','NNE','NE','ENE','E','ESE','SE','SSO','S','SSO','SO','OSO','O','ONO','NO','NNO'];
 function dirName(d){if(d==null)return'--';return['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'][Math.round(d/22.5)%16]}
 const f1=v=>v==null||isNaN(v)?'--':(Math.round(v*10)/10).toLocaleString('it-IT');
+// riallinea gli accumuli di pioggia alla griglia della bascula Davis (0,2 mm per colpo),
+// correggendo l'artefatto di conversione mm→pollici→mm di Weather Underground
+const snapRain=v=>(v==null||isNaN(v))?null:Math.round(v*5)/5;
 const f0=v=>v==null||isNaN(v)?'--':Math.round(v).toString();
 
 /* ================= FETCH ================= */
@@ -541,7 +544,7 @@ function renderCurrent(o){
   const rr=m.precipRate;
   $('rRate').innerHTML=f1(rr)+' <span style="font-size:.45em;color:var(--mut)">mm/h</span>';
   $('rRate').classList.toggle('active',rr>0);
-  $('rToday').textContent=f1(m.precipTotal)+' mm';
+  $('rToday').textContent=f1(snapRain(m.precipTotal))+' mm';
   // animazioni di sfondo pilotate dai valori reali
   fxWind.setIntensity(Math.max(m.windSpeed||0,(m.windGust||0)*.7));
   fxRain.setIntensity(m.precipRate||0);
@@ -764,7 +767,7 @@ const SERIES=[
  {id:'gust',  lbl:'Raffica',     unit:'km/h',axis:'yKmh', color:'#5eead4', dash:[5,4], get:o=>o.metric?.windgustHigh},
  {id:'wdir',  lbl:'Direz. vento',unit:'°',   axis:'yDeg', color:'#e8d44d', points:true, get:o=>o.winddirAvg},
  {id:'rrate', lbl:'Rain rate',   unit:'mm/h',axis:'yRate',color:'#4aa3ff', fill:true, get:o=>o.metric?.precipRate},
- {id:'rain',  lbl:'Pioggia cum.',unit:'mm',  axis:'yMm',  color:'#2563eb', get:o=>o.metric?.precipTotal},
+ {id:'rain',  lbl:'Pioggia cum.',unit:'mm',  axis:'yMm',  color:'#2563eb', get:o=>snapRain(o.metric?.precipTotal)},
  {id:'etemp', lbl:'T Ecowitt',   unit:'°C',  axis:'yC',   color:'#f06ec2', eco:true, get:o=>ecoDay.t.get(k5wu(o.obsTimeLocal))},
  {id:'ehum',  lbl:'UR Ecowitt',  unit:'%',   axis:'yPct', color:'#34d399', eco:true, dash:[4,4], get:o=>ecoDay.h.get(k5wu(o.obsTimeLocal))},
 ];
