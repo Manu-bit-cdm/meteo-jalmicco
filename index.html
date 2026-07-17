@@ -321,6 +321,20 @@ const f1=v=>v==null||isNaN(v)?'--':(Math.round(v*10)/10).toLocaleString('it-IT')
 // riallinea gli accumuli di pioggia alla griglia della bascula Davis (0,2 mm per colpo),
 // correggendo l'artefatto di conversione mm→pollici→mm di Weather Underground
 const snapRain=v=>(v==null||isNaN(v))?null:Math.round(v*5)/5;
+// rain rate istantaneo derivato dalla cumulata (il "precipRate" di WU è in realtà
+// l'accumulo dell'ultima ora, non l'intensità): finestra mobile degli ultimi 4 minuti
+let rateBuf=[];
+function liveRainRate(tot){
+  const now=Date.now();
+  if(tot==null||isNaN(tot))return null;
+  if(rateBuf.length&&tot<rateBuf[rateBuf.length-1].v-0.01)rateBuf=[];  // reset di mezzanotte
+  rateBuf.push({t:now,v:tot});
+  rateBuf=rateBuf.filter(p=>now-p.t<=4*60000);
+  if(rateBuf.length<2)return 0;
+  const a=rateBuf[0], b=rateBuf[rateBuf.length-1];
+  const dh=(b.t-a.t)/3600000;
+  return dh>0?Math.max(0,(b.v-a.v)/dh):0;
+}
 const f0=v=>v==null||isNaN(v)?'--':Math.round(v).toString();
 
 /* ================= FETCH ================= */
@@ -541,13 +555,13 @@ function renderCurrent(o){
   $('dirTxt').textContent=dirName(o.winddir);
   if(o.winddir!=null)$('arrow').style.transform=`rotate(${o.winddir}deg)`;
   // pioggia
-  const rr=m.precipRate;
+  const rr=liveRainRate(m.precipTotal);
   $('rRate').innerHTML=f1(rr)+' <span style="font-size:.45em;color:var(--mut)">mm/h</span>';
   $('rRate').classList.toggle('active',rr>0);
   $('rToday').textContent=f1(snapRain(m.precipTotal))+' mm';
   // animazioni di sfondo pilotate dai valori reali
   fxWind.setIntensity(Math.max(m.windSpeed||0,(m.windGust||0)*.7));
-  fxRain.setIntensity(m.precipRate||0);
+  fxRain.setIntensity(rr||0);
   // nebbia: umidità altissima e dew point incollato alla temperatura
   const spread=(t!=null&&m.dewpt!=null)?t-m.dewpt:99;
   fxFog.setIntensity((o.humidity>=95&&spread<=1.5)?Math.min(1,(o.humidity-95)/4):0);
@@ -615,7 +629,15 @@ function renderExtremes(){
   }
   $('eHmin').textContent=f0(mn(T('humidityLow').length?T('humidityLow'):T('humidityAvg')))+' %';
   $('ePress').textContent=f1(mn(M('pressureMin')))+' / '+f1(mx(M('pressureMax')));
-  $('rMax').textContent=f1(mx(M('precipRate')))+' mm/h';
+  let rm=null;
+  dayObs.forEach((o,i)=>{
+    if(!i)return;
+    const p=dayObs[i-1].metric?dayObs[i-1].metric.precipTotal:null, c=o.metric?o.metric.precipTotal:null;
+    if(p==null||c==null||c<p)return;
+    const dtm=(obsEpoch(o)-obsEpoch(dayObs[i-1]))/60000;
+    if(dtm>0){const r=(c-p)/dtm*60;if(rm==null||r>rm)rm=r}
+  });
+  $('rMax').textContent=f1(rm)+' mm/h';
 }
 
 /* ============ Ecowitt (SmartCellino) ============ */
@@ -766,7 +788,12 @@ const SERIES=[
  {id:'wind',  lbl:'Vento',       unit:'km/h',axis:'yKmh', color:'#9ad1c8', get:o=>o.metric?.windspeedAvg},
  {id:'gust',  lbl:'Raffica',     unit:'km/h',axis:'yKmh', color:'#5eead4', dash:[5,4], get:o=>o.metric?.windgustHigh},
  {id:'wdir',  lbl:'Direz. vento',unit:'°',   axis:'yDeg', color:'#e8d44d', points:true, get:o=>o.winddirAvg},
- {id:'rrate', lbl:'Rain rate',   unit:'mm/h',axis:'yRate',color:'#4aa3ff', fill:true, get:o=>o.metric?.precipRate},
+ {id:'rrate', lbl:'Rain rate',   unit:'mm/h',axis:'yRate',color:'#4aa3ff', fill:true,
+   get:(o,i,a)=>{if(!i||!a)return null;
+     const p=a[i-1]&&a[i-1].metric?a[i-1].metric.precipTotal:null, c=o.metric?.precipTotal;
+     if(p==null||c==null||c<p)return null;
+     const dtm=(obsEpoch(o)-obsEpoch(a[i-1]))/60000;
+     return dtm>0?Math.round((c-p)/dtm*60*10)/10:null}},
  {id:'rain',  lbl:'Pioggia cum.',unit:'mm',  axis:'yMm',  color:'#2563eb', get:o=>snapRain(o.metric?.precipTotal)},
  {id:'etemp', lbl:'T Ecowitt',   unit:'°C',  axis:'yC',   color:'#f06ec2', eco:true, get:o=>ecoDay.t.get(k5wu(o.obsTimeLocal))},
  {id:'ehum',  lbl:'UR Ecowitt',  unit:'%',   axis:'yPct', color:'#34d399', eco:true, dash:[4,4], get:o=>ecoDay.h.get(k5wu(o.obsTimeLocal))},
