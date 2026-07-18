@@ -348,6 +348,23 @@ const urlCurrent=()=>`${BASE}/observations/current?stationId=${cfg.st}&format=js
 const urlDay=()=>`${BASE}/observations/all/1day?stationId=${cfg.st}&format=json&units=m&apiKey=${cfg.key}&numericPrecision=decimal`;
 const urlHist=d=>`${BASE}/history/all?stationId=${cfg.st}&format=json&units=m&apiKey=${cfg.key}&numericPrecision=decimal&date=${d.replaceAll('-','')}`;
 
+/* ============ ThingSpeak (dati diretti Meteobridge: pioggia e vento) ============ */
+const TS_CH=3430598, TS_KEY='Y9NJBIEJECVVQMCD';
+let ts=null;            // ultimo dato ThingSpeak {at, rr, rToday, wind, gust, dir}
+let lastObs=null;       // ultima osservazione WU (per ridisegnare quando arriva TS)
+const tsFresh=()=>ts&&(Date.now()-ts.at.getTime())<5*60000;  // valido se < 5 min
+const tsNum=v=>{const n=parseFloat(v);return isNaN(n)?null:n};
+async function refreshTS(){
+  try{
+    const j=await getJSON(`https://api.thingspeak.com/channels/${TS_CH}/feeds/last.json?api_key=${TS_KEY}`);
+    if(!j||j===-1)throw new Error('canale vuoto');
+    ts={at:new Date(j.created_at),
+        rr:tsNum(j.field1), rToday:tsNum(j.field2),
+        wind:tsNum(j.field3), gust:tsNum(j.field4), dir:tsNum(j.field5)};
+    if(lastObs)renderCurrent(lastObs);   // aggiorna subito vento/pioggia a video
+  }catch(e){console.warn('thingspeak:',e)}
+}
+
 let dayObs=[];
 let selDate=null;                 // 'YYYY-MM-DD' oppure null = oggi (live)
 const todayStr=()=>{const n=new Date();return n.getFullYear()+'-'+pad2(n.getMonth()+1)+'-'+pad2(n.getDate())};
@@ -358,9 +375,11 @@ async function refreshCurrent(){
     const j=await getJSON(urlCurrent());
     const o=j.observations&&j.observations[0];
     if(!o)throw new Error('nessuna osservazione');
+    lastObs=o;
     renderCurrent(o);
     $('dot').className='dot';
-    $('updated').textContent='agg. '+(o.obsTimeLocal||'').slice(11,16);
+    $('updated').textContent='agg. '+(o.obsTimeLocal||'').slice(11,16)
+      +(tsFresh()?' · TS '+pad2(ts.at.getHours())+':'+pad2(ts.at.getMinutes()):'');
   }catch(e){
     $('dot').className='dot err';
     $('updated').textContent='errore dati ('+e.message+')';
@@ -548,19 +567,26 @@ function renderCurrent(o){
   $('dew').textContent=f1(m.dewpt);
   $('hum').textContent=f0(o.humidity);
   $('press').textContent=f1(m.pressure);
+  // vento e pioggia: dati diretti Meteobridge via ThingSpeak, con WU di riserva
+  const tsOK=tsFresh();
+  const wSpd=tsOK&&ts.wind!=null?ts.wind:m.windSpeed;
+  const wGst=tsOK&&ts.gust!=null?ts.gust:m.windGust;
+  const wDir=tsOK&&ts.dir!=null?ts.dir:o.winddir;
   // vento
-  $('wSpd').innerHTML=f1(m.windSpeed)+' <span style="font-size:.5em;color:var(--mut)">km/h</span>';
-  $('wGust').textContent=f1(m.windGust);
-  $('wDirDeg').textContent=f0(o.winddir)+'°';
-  $('dirTxt').textContent=dirName(o.winddir);
-  if(o.winddir!=null)$('arrow').style.transform=`rotate(${o.winddir}deg)`;
-  // pioggia
-  const rr=liveRainRate(m.precipTotal);
+  $('wSpd').innerHTML=f1(wSpd)+' <span style="font-size:.5em;color:var(--mut)">km/h</span>';
+  $('wGust').textContent=f1(wGst);
+  $('wDirDeg').textContent=f0(wDir)+'°';
+  $('dirTxt').textContent=dirName(wDir);
+  if(wDir!=null)$('arrow').style.transform=`rotate(${wDir}deg)`;
+  // pioggia: rain rate vero della Davis da TS; da WU resta la stima derivata
+  const rrWU=liveRainRate(m.precipTotal);          // tiene comunque vivo il buffer di riserva
+  const rr=tsOK&&ts.rr!=null?ts.rr:rrWU;
   $('rRate').innerHTML=f1(rr)+' <span style="font-size:.45em;color:var(--mut)">mm/h</span>';
   $('rRate').classList.toggle('active',rr>0);
-  $('rToday').textContent=f1(snapRain(m.precipTotal))+' mm';
+  const rTod=tsOK&&ts.rToday!=null?ts.rToday:snapRain(m.precipTotal);
+  $('rToday').textContent=f1(rTod)+' mm';
   // animazioni di sfondo pilotate dai valori reali
-  fxWind.setIntensity(Math.max(m.windSpeed||0,(m.windGust||0)*.7));
+  fxWind.setIntensity(Math.max(wSpd||0,(wGst||0)*.7));
   fxRain.setIntensity(rr||0);
   // nebbia: umidità altissima e dew point incollato alla temperatura
   const spread=(t!=null&&m.dewpt!=null)?t-m.dewpt:99;
@@ -568,14 +594,14 @@ function renderCurrent(o){
   // tremolio da caldo oltre i ~31 °C
   fxHeat.setIntensity(t!=null?Math.max(0,Math.min(1,(t-31)/5)):0);
   // scrollone della banderuola se la raffica stacca la media di 8+ km/h
-  if(m.windGust!=null&&(m.windGust-(m.windSpeed||0))>=8){
+  if(wGst!=null&&(wGst-(wSpd||0))>=8){
     const k=document.getElementById('kick');
     if(k){k.classList.remove('kick');void k.getBoundingClientRect();k.classList.add('kick')}
   }
   // pulsazione se un estremo del giorno viene battuto ora
   if(isLive()){
     if(recT!=null&&t!=null&&t>recT){recT=t;pulseExt('eTmax')}
-    if(recG!=null&&m.windGust!=null&&m.windGust>recG){recG=m.windGust;pulseExt('eGust')}
+    if(recG!=null&&wGst!=null&&wGst>recG){recG=wGst;pulseExt('eGust')}
   }
   // memorizza Davis per confronto con Ecowitt
   lastDavis={t:t,h:o.humidity};
@@ -947,10 +973,11 @@ function start(){
   timers.forEach(clearInterval);timers=[];
   $('main').style.display='flex';
   buildControls();
-  refreshCurrent();refreshDay();refreshEco();refreshEcoDay();
+  refreshTS();refreshCurrent();refreshDay();refreshEco();refreshEcoDay();
   setTimeout(nudgeHero,400);setTimeout(nudgeHero,1500);
   // polling attivo solo a pagina visibile (risparmia quota API in background)
   timers.push(setInterval(()=>{if(!document.hidden)refreshCurrent()},20000));
+  timers.push(setInterval(()=>{if(!document.hidden)refreshTS()},30000));
   timers.push(setInterval(()=>{if(!document.hidden)refreshEco()},60000));
   timers.push(setInterval(()=>{if(!document.hidden&&isLive())refreshDay()},5*60000));
   timers.push(setInterval(()=>{if(!document.hidden&&isLive())refreshEcoDay()},5*60000));
@@ -959,7 +986,7 @@ function start(){
 // refresh immediato quando la pagina torna in primo piano
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden&&cfg&&cfg.st){
-    refreshCurrent();refreshEco();
+    refreshTS();refreshCurrent();refreshEco();
     if(isLive()){refreshDay();refreshEcoDay()}
   }
 });
